@@ -161,6 +161,44 @@ class Krea2VendoredModelTests(unittest.TestCase):
         self.assertIn("krea2_turbo", transformer.peft_config)
         self.assertIn("transformer_blocks.0.attn.to_q", transformer.peft_config["krea2_turbo"].target_modules)
 
+    def test_lora_loader_aligns_external_krea2_adapter_for_wrapped_transformer(self):
+        class WrappedTransformer(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.module = Krea2Transformer2DModel(
+                    in_channels=4,
+                    num_layers=1,
+                    attention_head_dim=6,
+                    num_attention_heads=1,
+                    num_key_value_heads=1,
+                    intermediate_size=8,
+                    timestep_embed_dim=8,
+                    text_hidden_dim=6,
+                    num_text_layers=1,
+                    text_num_attention_heads=1,
+                    text_num_key_value_heads=1,
+                    text_intermediate_size=8,
+                    num_layerwise_text_blocks=1,
+                    num_refiner_text_blocks=0,
+                    axes_dims_rope=(2, 2, 2),
+                )
+
+        transformer = WrappedTransformer()
+        state_dict = {
+            "transformer.blocks.0.attn.wq.lora_A.weight": torch.ones(2, 6),
+            "transformer.blocks.0.attn.wq.lora_B.weight": torch.ones(6, 2),
+        }
+
+        Krea2LoraLoaderMixin.load_lora_into_transformer(
+            state_dict,
+            transformer=transformer,
+            adapter_name="krea2_turbo",
+        )
+
+        self.assertIn("krea2_turbo", transformer.peft_config)
+        self.assertIn("module.transformer_blocks.0.attn.to_q", transformer.peft_config["krea2_turbo"].target_modules)
+        self.assertTrue(hasattr(transformer.module.transformer_blocks[0].attn.to_q, "lora_A"))
+
     def test_pipeline_accepts_reference_image_for_validation(self):
         parameters = inspect.signature(Krea2Pipeline.__call__).parameters
         self.assertIn("reference_image", parameters)
