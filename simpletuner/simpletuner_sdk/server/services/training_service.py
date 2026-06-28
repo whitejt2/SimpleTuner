@@ -1516,6 +1516,9 @@ def _queue_training_job(
 
     position, status = _add_to_queue()
 
+    if not requires_approval:
+        _process_pending_local_jobs()
+
     if requires_approval:
         logger.info(
             "Queued training job %s for approval at position %d (reason: %s)",
@@ -1543,6 +1546,27 @@ def _queue_training_job(
         queue_position=position,
         reason=f"Waiting for {num_processes} GPU(s) to become available",
     )
+
+
+def _process_pending_local_jobs() -> None:
+    """Kick the local GPU allocator after a local job is queued."""
+    import asyncio
+
+    from .local_gpu_allocator import get_gpu_allocator
+
+    async def _async_process():
+        started = await get_gpu_allocator().process_pending_jobs()
+        if started:
+            logger.info("Started %d pending local job(s): %s", len(started), started)
+
+    try:
+        asyncio.get_running_loop()
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            pool.submit(lambda: asyncio.run(_async_process()))
+    except RuntimeError:
+        asyncio.run(_async_process())
 
 
 def terminate_training_job(job_id: Optional[str], *, status: str, clear_job_id: bool) -> bool:

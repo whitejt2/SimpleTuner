@@ -294,6 +294,7 @@ class LocalGPUAllocator:
         """
         inventory = detect_gpu_inventory()
         all_gpus = set(d["index"] for d in inventory.get("devices", []))
+        preferred_gpus = self._normalize_preferred_gpus(preferred_gpus, all_gpus)
         allocated = await self.get_allocated_gpus()
         available = sorted(gpu for gpu in all_gpus if gpu not in allocated)
 
@@ -356,6 +357,24 @@ class LocalGPUAllocator:
 
         # Use any available GPUs
         return (True, available[:required_count], "")
+
+    def _normalize_preferred_gpus(
+        self,
+        preferred_gpus: Optional[List[int]],
+        all_gpus: Set[int],
+    ) -> Optional[List[int]]:
+        """Normalize UI-provided GPU IDs to CUDA device indices when unambiguous."""
+        if not preferred_gpus or not all_gpus:
+            return preferred_gpus
+        if all(gpu in all_gpus for gpu in preferred_gpus):
+            return preferred_gpus
+
+        one_based = [gpu - 1 for gpu in preferred_gpus]
+        if all(gpu >= 1 for gpu in preferred_gpus) and all(gpu in all_gpus for gpu in one_based):
+            logger.info("Normalizing one-based GPU IDs %s to CUDA indices %s", preferred_gpus, one_based)
+            return one_based
+
+        return preferred_gpus
 
     async def _check_org_gpu_quota(
         self,

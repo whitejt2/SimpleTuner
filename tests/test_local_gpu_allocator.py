@@ -360,6 +360,24 @@ class TestLocalGPUAllocatorCanAllocate(unittest.TestCase):
 
     @patch("simpletuner.simpletuner_sdk.server.services.local_gpu_allocator.detect_gpu_inventory")
     @patch("simpletuner.simpletuner_sdk.server.services.webui_state.WebUIStateStore")
+    def test_can_allocate_normalizes_one_based_preferred_gpus(self, mock_state_store, mock_detect):
+        """The WebUI may submit one-based GPU IDs; allocator should use CUDA indices."""
+        mock_detect.return_value = {"backend": "cuda", "devices": [{"index": 0}, {"index": 1}]}
+        mock_state_store.return_value.load_defaults.return_value = self.mock_defaults
+
+        can_alloc, gpus, reason = asyncio.run(
+            self.allocator.can_allocate(
+                required_count=2,
+                preferred_gpus=[1, 2],
+            )
+        )
+
+        self.assertTrue(can_alloc)
+        self.assertEqual(gpus, [0, 1])
+        self.assertEqual(reason, "")
+
+    @patch("simpletuner.simpletuner_sdk.server.services.local_gpu_allocator.detect_gpu_inventory")
+    @patch("simpletuner.simpletuner_sdk.server.services.webui_state.WebUIStateStore")
     def test_can_allocate_preferred_gpus_unavailable(self, mock_state_store, mock_detect):
         """Test allocation fails when preferred GPUs are not available."""
         mock_detect.return_value = self.mock_inventory

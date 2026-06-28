@@ -5868,6 +5868,12 @@ class Trainer:
         if self.accelerator is not None and distributed_type != DistributedType.NO and all_processes_saving:
             self.accelerator.wait_for_everyone()
         if save_path != save_path_tmp and is_main_process:
+            if os.path.exists(save_path):
+                logger.warning("Replacing existing checkpoint directory before atomic rename: %s", save_path)
+                if os.path.isdir(save_path):
+                    shutil.rmtree(save_path)
+                else:
+                    os.remove(save_path)
             os.rename(save_path_tmp, save_path)
         if self.accelerator is not None and distributed_type != DistributedType.NO and all_processes_saving:
             self.accelerator.wait_for_everyone()
