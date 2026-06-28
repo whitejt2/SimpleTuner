@@ -12,14 +12,10 @@ Tests cover:
 from __future__ import annotations
 
 import asyncio
-import json
-import sqlite3
-import tempfile
 import unittest
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 from simpletuner.simpletuner_sdk.server.services.cloud.queue.models import QueueEntry, QueuePriority, QueueStatus
 from simpletuner.simpletuner_sdk.server.services.local_gpu_allocator import LocalGPUAllocator
@@ -64,6 +60,7 @@ class MockQueueStore:
             self._allocated_gpus.pop(job_id, None)
         else:
             self._allocated_gpus[job_id] = gpus
+        self._entries[job_id].allocated_gpus = gpus
         return True
 
     async def mark_running(self, job_id: str) -> bool:
@@ -363,6 +360,24 @@ class TestLocalGPUAllocatorCanAllocate(unittest.TestCase):
 
     @patch("simpletuner.simpletuner_sdk.server.services.local_gpu_allocator.detect_gpu_inventory")
     @patch("simpletuner.simpletuner_sdk.server.services.webui_state.WebUIStateStore")
+    def test_can_allocate_normalizes_one_based_preferred_gpus(self, mock_state_store, mock_detect):
+        """The WebUI may submit one-based GPU IDs; allocator should use CUDA indices."""
+        mock_detect.return_value = {"backend": "cuda", "devices": [{"index": 0}, {"index": 1}]}
+        mock_state_store.return_value.load_defaults.return_value = self.mock_defaults
+
+        can_alloc, gpus, reason = asyncio.run(
+            self.allocator.can_allocate(
+                required_count=2,
+                preferred_gpus=[1, 2],
+            )
+        )
+
+        self.assertTrue(can_alloc)
+        self.assertEqual(gpus, [0, 1])
+        self.assertEqual(reason, "")
+
+    @patch("simpletuner.simpletuner_sdk.server.services.local_gpu_allocator.detect_gpu_inventory")
+    @patch("simpletuner.simpletuner_sdk.server.services.webui_state.WebUIStateStore")
     def test_can_allocate_preferred_gpus_unavailable(self, mock_state_store, mock_detect):
         """Test allocation fails when preferred GPUs are not available."""
         mock_detect.return_value = self.mock_inventory
@@ -586,6 +601,43 @@ class TestLocalGPUAllocatorProcessPending(unittest.TestCase):
         started = asyncio.run(self.allocator.process_pending_jobs())
 
         self.assertEqual(started, ["job-1"])
+        mock_submit.assert_called_once()
+
+    @patch("simpletuner.simpletuner_sdk.server.services.local_gpu_allocator.detect_gpu_inventory")
+    @patch("simpletuner.simpletuner_sdk.server.services.webui_state.WebUIStateStore")
+    @patch("simpletuner.simpletuner_sdk.process_keeper.submit_job")
+    @patch("simpletuner.simpletuner_sdk.server.services.cloud.async_job_store.AsyncJobStore.get_instance")
+    def test_process_pending_falls_back_from_incomplete_gpu_preference(
+        self,
+        mock_job_store_instance,
+        mock_submit,
+        mock_state_store,
+        mock_detect,
+    ):
+        """A stale queued 2-GPU job with one preferred GPU should not deadlock."""
+        mock_detect.return_value = self.mock_inventory
+        mock_state_store.return_value.load_defaults.return_value = self.mock_defaults
+
+        mock_store = AsyncMock()
+        mock_store.update_job = AsyncMock(return_value=True)
+        mock_job_store_instance.return_value = mock_store
+
+        entry = self._create_entry(
+            "job-1",
+            num_processes=2,
+            allocated_gpus=[0],
+            metadata={
+                "runtime_config": {"--output_dir": "/tmp/test"},
+                "env_name": "test-env",
+                "any_gpu": False,
+            },
+        )
+        self.mock_queue_store.add_entry(entry)
+
+        started = asyncio.run(self.allocator.process_pending_jobs())
+
+        self.assertEqual(started, ["job-1"])
+        self.assertEqual(entry.allocated_gpus, [0, 1])
         mock_submit.assert_called_once()
 
     @patch("simpletuner.simpletuner_sdk.server.services.local_gpu_allocator.detect_gpu_inventory")

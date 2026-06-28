@@ -2874,6 +2874,7 @@ class Validation:
         adapter_scales: list[float] = []
         for idx, adapter in enumerate(adapter_run.adapters):
             adapter_name = self._next_adapter_name(adapter_run, adapter, idx, adapter_names)
+            self._discard_validation_adapters(pipeline, [adapter_name])
             load_kwargs = {"adapter_name": adapter_name}
             if adapter.weight_name:
                 load_kwargs["weight_name"] = adapter.weight_name
@@ -2912,12 +2913,49 @@ class Validation:
     def _remove_validation_adapters(self, pipeline, adapter_names: list[str]):
         if not adapter_names:
             return
+        self._discard_validation_adapters(pipeline, adapter_names)
+        self._assert_adapters_detached(pipeline, adapter_names)
+
+    def _discard_validation_adapters(self, pipeline, adapter_names: list[str]):
+        if pipeline is None or not adapter_names:
+            return
         if hasattr(pipeline, "delete_adapters"):
             names = adapter_names if len(adapter_names) > 1 else adapter_names[0]
-            pipeline.delete_adapters(names)
-        else:
-            logger.warning("Could not delete temporary validation adapters: %s", adapter_names)
-        self._assert_adapters_detached(pipeline, adapter_names)
+            try:
+                pipeline.delete_adapters(names)
+            except Exception:
+                logger.debug("Pipeline-level adapter delete failed for %s", adapter_names, exc_info=True)
+
+        components = []
+        if hasattr(pipeline, "components") and isinstance(pipeline.components, dict):
+            components.extend(pipeline.components.values())
+        for attr in (
+            "transformer",
+            "text_encoder",
+            "text_encoder_2",
+            "text_encoder_3",
+            "text_encoder_4",
+            "controlnet",
+            "unet",
+        ):
+            component = getattr(pipeline, attr, None)
+            if component is not None:
+                components.append(component)
+
+        for module in components:
+            config = getattr(module, "peft_config", None)
+            if not isinstance(config, dict):
+                continue
+            for name in adapter_names:
+                if name not in config:
+                    continue
+                delete_adapter = getattr(module, "delete_adapter", None)
+                if callable(delete_adapter):
+                    try:
+                        delete_adapter(name)
+                        continue
+                    except Exception:
+                        logger.debug("Component adapter delete failed for %s", name, exc_info=True)
 
     def _assert_adapters_detached(self, pipeline, adapter_names: list[str]):
         if pipeline is None or not adapter_names:
