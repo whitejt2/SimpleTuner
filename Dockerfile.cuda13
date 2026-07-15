@@ -100,17 +100,8 @@ EXPOSE 22 8001
 ENTRYPOINT [ "/start.sh" ]
 
 # Runtime validation
-RUN python - <<'PY'
-import cv2
-print("OpenCV:", cv2.__version__)
-
-import torch
-print("Torch:", torch.__version__)
-
-from simpletuner.simpletuner_sdk.server import create_app
-from simpletuner.simpletuner_sdk.server import ServerMode
-
-create_app(mode=ServerMode.TRAINER)
-
-print("Container validation passed.")
-PY
+RUN python -c "import cv2; print('OpenCV:', cv2.__version__)"
+RUN python -c "import torch; print('Torch:', torch.__version__)"
+RUN python -c "import diffusers; print('Diffusers:', diffusers.__version__)"
+RUN python -c "import transformers; print('Transformers:', transformers.__version__)"
+RUN python -c "from simpletuner.simpletuner_sdk.server import create_app, ServerMode; create_app(mode=ServerMode.TRAINER); print('Container validation passed.')"
