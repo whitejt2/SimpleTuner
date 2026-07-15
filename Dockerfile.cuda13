@@ -1,12 +1,12 @@
-FROM nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04
+FROM nvidia/cuda:13.0.0-devel-ubuntu24.04
 
 # Hardware Architecture
 ENV TORCH_CUDA_ARCH_LIST=9.0
-ENV CUDA_HOME=/usr/local/cuda-12.8
+ENV CUDA_HOME=/usr/local/cuda-13.0
 ENV LD_LIBRARY_PATH=$CUDA_HOME/lib64:$CUDA_HOME/targets/x86_64-linux/lib/stubs:$LD_LIBRARY_PATH
 
 # Settings
-ARG PYTHON_VERSION=3.12
+ARG PYTHON_VERSION=3.13
 ENV DEBIAN_FRONTEND=noninteractive
 ENV HF_HOME=/workspace/huggingface
 ENV SIMPLETUNER_WORKSPACE=/workspace/simpletuner
