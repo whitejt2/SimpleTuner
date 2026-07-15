@@ -18,6 +18,10 @@ WORKDIR /app
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
+
+
 # 1. System Dependencies
 RUN apt-get update -y && apt-get install -y --no-install-recommends \
     build-essential \
@@ -91,3 +95,19 @@ VOLUME /workspace
 EXPOSE 22 8001
 
 ENTRYPOINT [ "/start.sh" ]
+
+# Runtime validation
+RUN python - <<'PY'
+import cv2
+print("OpenCV:", cv2.__version__)
+
+import torch
+print("Torch:", torch.__version__)
+
+from simpletuner.simpletuner_sdk.server import create_app
+from simpletuner.simpletuner_sdk.server import ServerMode
+
+create_app(mode=ServerMode.TRAINER)
+
+print("Container validation passed.")
+PY
