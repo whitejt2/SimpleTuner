@@ -31,6 +31,24 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends \
     python${PYTHON_VERSION}-dev \
     python${PYTHON_VERSION}-venv \
     ffmpeg \
+    pkg-config \
+    cmake \
+    ninja-build \
+    clang \
+    libopencv-dev \
+    libgoogle-glog-dev \
+    libgstreamer1.0-dev \
+    libgstreamer-plugins-base1.0-dev \
+    libjpeg-dev \
+    libpng-dev \
+    libtiff-dev \
+    libwebp-dev \
+    libopenexr-dev \
+    libavcodec-dev \
+    libavformat-dev \
+    libavutil-dev \
+    libswscale-dev \
+    libswresample-dev \
     libsm6 \
     libxext6 \
     && rm -rf /var/lib/apt/lists/* \
